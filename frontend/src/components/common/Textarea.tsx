@@ -1,0 +1,55 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: MIT-0
+
+import { TextareaHTMLAttributes, forwardRef } from 'react';
+
+interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label?: string;
+  error?: string;
+  helperText?: string;
+}
+
+const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
+  ({ label, error, helperText, className = '', required, onInvalid, ...props }, ref) => {
+    return (
+      <div className="w-full">
+        {label && (
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            {label}
+            {required && <span className="text-red-400 ml-0.5"></span>}
+          </label>
+        )}
+        <textarea
+          ref={ref}
+          required={required}
+          className={`
+            w-full px-3 py-2 
+            border rounded-lg 
+            text-sm text-gray-900 
+            placeholder:text-gray-400
+            focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+            disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed
+            resize-none transition-colors
+            ${error ? 'border-red-400 ring-1 ring-red-200' : 'border-gray-300'}
+            ${className}
+          `}
+          onInvalid={(e) => {
+            e.preventDefault();
+            onInvalid?.(e);
+          }}
+          {...props}
+        />
+        {error && (
+          <p className="mt-1 text-xs text-red-500">{error}</p>
+        )}
+        {helperText && !error && (
+          <p className="mt-1 text-xs text-gray-500">{helperText}</p>
+        )}
+      </div>
+    );
+  }
+);
+
+Textarea.displayName = 'Textarea';
+
+export default Textarea;

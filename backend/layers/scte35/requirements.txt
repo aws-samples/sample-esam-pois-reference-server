@@ -1,0 +1,2 @@
+threefive>=2.3.0,<2.4.0
+crcmod>=1.7

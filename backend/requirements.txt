@@ -1,0 +1,8 @@
+# Runtime dependencies (what the Lambda functions import)
+threefive>=2.3.0,<2.4.0
+crcmod>=1.7  # Required by threefive for SCTE-35 encoding
+xmltodict>=0.13.0  # Required by ESAM XML parser
+boto3>=1.28.0
+pydantic==2.12.5
+pydantic-core==2.41.5
+aiohttp>=3.9.0  # For webhook plugin HTTP requests
