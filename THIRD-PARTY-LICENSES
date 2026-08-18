@@ -1,0 +1,127 @@
+THIRD-PARTY LICENSES
+
+This project includes or depends on the following third-party software:
+
+==============================================================================
+PYTHON DEPENDENCIES (backend/)
+==============================================================================
+
+threefive (https://github.com/futzu/threefive)
+License: MIT
+Copyright: futzu
+
+pydantic (https://github.com/pydantic/pydantic)
+License: MIT
+Copyright: Samuel Colvin and contributors
+
+boto3 / botocore (https://github.com/boto/boto3)
+License: Apache-2.0
+Copyright: Amazon.com, Inc.
+
+xmltodict (https://github.com/martinblech/xmltodict)
+License: MIT
+Copyright: Martin Blech
+
+aiohttp (https://github.com/aio-libs/aiohttp)
+License: Apache-2.0
+Copyright: aiohttp contributors
+
+hypothesis (https://github.com/HypothesisWorks/hypothesis)
+License: MPL-2.0
+Copyright: David R. MacIver
+
+pytest (https://github.com/pytest-dev/pytest)
+License: MIT
+Copyright: Holger Krekel and contributors
+
+moto (https://github.com/getmoto/moto)
+License: Apache-2.0
+Copyright: Steve Pulec
+
+black (https://github.com/psf/black)
+License: MIT
+Copyright: Lukasz Langa and contributors
+
+ruff (https://github.com/astral-sh/ruff)
+License: MIT
+Copyright: Charlie Marsh and contributors
+
+==============================================================================
+JAVASCRIPT/TYPESCRIPT DEPENDENCIES (frontend/)
+==============================================================================
+
+react (https://github.com/facebook/react)
+License: MIT
+Copyright: Meta Platforms, Inc.
+
+react-dom (https://github.com/facebook/react)
+License: MIT
+Copyright: Meta Platforms, Inc.
+
+react-router-dom (https://github.com/remix-run/react-router)
+License: MIT
+Copyright: Remix Software, Inc.
+
+@reduxjs/toolkit (https://github.com/reduxjs/redux-toolkit)
+License: MIT
+Copyright: Mark Erikson
+
+react-redux (https://github.com/reduxjs/react-redux)
+License: MIT
+Copyright: Dan Abramov
+
+recharts (https://github.com/recharts/recharts)
+License: MIT
+Copyright: recharts contributors
+
+aws-amplify (https://github.com/aws-amplify/amplify-js)
+License: Apache-2.0
+Copyright: Amazon.com, Inc.
+
+lucide-react (https://github.com/lucide-icons/lucide)
+License: ISC
+Copyright: Lucide contributors
+
+scte35 (https://github.com/Comcast/scte35-js)
+License: Apache-2.0
+Copyright: Comcast Corporation
+
+redux-persist (https://github.com/rt2zz/redux-persist)
+License: MIT
+Copyright: Zack Story
+
+react-beautiful-dnd (https://github.com/atlassian/react-beautiful-dnd)
+License: Apache-2.0
+Copyright: Atlassian Pty Ltd
+
+@tanstack/react-query (https://github.com/TanStack/query)
+License: MIT
+Copyright: Tanner Linsley
+
+vite (https://github.com/vitejs/vite)
+License: MIT
+Copyright: Evan You and Vite contributors
+
+tailwindcss (https://github.com/tailwindlabs/tailwindcss)
+License: MIT
+Copyright: Tailwind Labs, Inc.
+
+typescript (https://github.com/microsoft/TypeScript)
+License: Apache-2.0
+Copyright: Microsoft Corporation
+
+==============================================================================
+JAVASCRIPT/TYPESCRIPT DEPENDENCIES (infrastructure/)
+==============================================================================
+
+aws-cdk-lib (https://github.com/aws/aws-cdk)
+License: Apache-2.0
+Copyright: Amazon.com, Inc.
+
+constructs (https://github.com/aws/constructs)
+License: Apache-2.0
+Copyright: Amazon.com, Inc.
+
+esbuild (https://github.com/evanw/esbuild)
+License: MIT
+Copyright: Evan Wallace

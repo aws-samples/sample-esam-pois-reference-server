@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1100 130" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+      <path d="M0,0 L7,2.5 L0,5" fill="#94A3B8"/>
+    </marker>
+  </defs>
+  <rect x="30" y="39.0" width="115" height="42" rx="6" fill="#1E293B" stroke="#1E293B" stroke-width="1.5"/>
+  <text x="88" y="65" text-anchor="middle" font-size="10" font-weight="500" fill="#FFFFFF">SCTE-35 Signal</text>
+  <line x1="145" y1="60" x2="184" y2="60" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="184" y="39.0" width="115" height="42" rx="6" fill="#FFFFFF" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="242" y="65" text-anchor="middle" font-size="10" font-weight="500" fill="#92400E">API Gateway</text>
+  <line x1="299" y1="60" x2="338" y2="60" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="338" y="39.0" width="115" height="42" rx="6" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.5"/>
+  <text x="396" y="65" text-anchor="middle" font-size="10" font-weight="500" fill="#4338CA">Signal Parser</text>
+  <line x1="453" y1="60" x2="492" y2="60" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="492" y="39.0" width="115" height="42" rx="6" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.5"/>
+  <text x="550" y="65" text-anchor="middle" font-size="10" font-weight="500" fill="#4338CA">Rule Engine</text>
+  <line x1="608" y1="60" x2="647" y2="60" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="647" y="39.0" width="115" height="42" rx="6" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.5"/>
+  <text x="704" y="65" text-anchor="middle" font-size="10" font-weight="500" fill="#4338CA">Signal Modifier</text>
+  <line x1="762" y1="60" x2="801" y2="60" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="801" y="39.0" width="115" height="42" rx="6" fill="#FFFFFF" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="858" y="65" text-anchor="middle" font-size="10" font-weight="500" fill="#166534">External Actions</text>
+  <line x1="916" y1="60" x2="955" y2="60" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="955" y="39.0" width="115" height="42" rx="6" fill="#1E293B" stroke="#1E293B" stroke-width="1.5"/>
+  <text x="1012" y="65" text-anchor="middle" font-size="10" font-weight="500" fill="#FFFFFF">ESAM Response</text>
+  <text x="550" y="120" text-anchor="middle" font-size="9" fill="#94A3B8">ESAM signal processing pipeline</text>
+</svg>
