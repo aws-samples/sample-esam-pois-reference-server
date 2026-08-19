@@ -4,16 +4,46 @@
 
 ## Description
 
-The **Placement Opportunity Information Service (POIS) Reference Server** is a serverless implementation of the SCTE-130 specification for SCTE-35 signal conditioning and ad insertion decision-making in live video streams.
+The **Placement Opportunity Information Service (POIS) Reference Server** is a serverless reference implementation of the ESAM signal-conditioning exchange used for SCTE-35 processing in live video workflows.
 
-POIS is a core component in the SCTE-130 advertising framework. It receives SCTE-35 splice signals from encoders or stream processors, evaluates them against configurable rules, and returns modified signals that control how downstream ad insertion systems (such as AWS Elemental MediaTailor or third-party SSAI platforms) handle placement opportunities.
+A POIS answers conditioning requests from an encoder. This project implements the ESAM Signal Processing Event (SPE) and Signal Processing Notification (SPN) exchange defined in SCTE-130 Part 9: it receives SCTE-35 signals from an ESAM-capable encoder or stream processor, evaluates them against channel-specific rules, and returns a conditioning decision. The conditioned signal then flows downstream to systems such as packagers, AWS Elemental MediaTailor, or third-party SSAI platforms.
+
+### What it does, in one example
+
+An encoder acquires a SCTE-35 signal and asks the POIS what to do with it:
+
+```text
+Encoder sends (ESAM SignalProcessingEvent)
+  segmentation_type_id = 0x34   (52, Provider Placement Opportunity Start)
+  duration             = 60s
+```
+
+You configure a channel rule that caps long placement opportunities:
+
+```text
+IF   segmentationTypeId = 52  (0x34)
+AND  duration > 30
+THEN set breakDuration to 30
+```
+
+The POIS returns the conditioned signal in the same HTTP response:
+
+```text
+Encoder → ESAM SignalProcessingEvent → POIS → rule engine
+       → ESAM SignalProcessingNotification (action "replace")
+       → encoder emits SCTE-35 with a 30s break duration
+```
+
+The same rule match can also select an alternate input for AWS Elemental Live Virtual Input Switching, or invoke an external action such as a webhook or an AWS Elemental MediaLive schedule update.
 
 This reference implementation is designed for broadcast engineers, streaming operators, and ad-tech teams who need to:
 
-- Condition SCTE-35 signals before they reach ad decision servers
+- Condition SCTE-35 signals before they reach downstream ad decision systems
 - Apply business rules to control which placement opportunities are surfaced
-- Modify signal descriptors (segmentation type, duration, UPID) in real time
-- Integrate signal processing with external systems via webhooks or MediaLive SCTE-35 injection
+- Modify supported signal fields and descriptors (segmentation type, duration, UPID) in the encoder request path
+- Integrate signal processing with external systems via webhooks or MediaLive schedule actions
+
+This project is a reference implementation for evaluation and development. Review and extend its security, reliability, and operational controls before using it for a production workload.
 
 ## Architecture
 
@@ -33,52 +63,83 @@ The project is organized into four components:
 **Core services:**
 
 - **Amazon API Gateway**, RESTful API for ESAM signal processing and management endpoints
-- **AWS Lambda**, Stateless compute for signal parsing, rule evaluation, and signal modification
-- **Amazon DynamoDB**, Storage for channel configuration, rules, and audit logs
-- **Amazon Cognito**, User authentication and role-based access control
+- **AWS Lambda**, Compute for signal parsing, rule evaluation, and signal modification
+- **Amazon DynamoDB**, Storage for channel configuration, rules, break state, and action audit records
+- **AWS Systems Manager Parameter Store**, SecureString storage for optional per-channel encoder credentials
+- **Amazon Cognito**, Dashboard authentication and the `admin` and `user` groups
 - **Amazon CloudWatch**, Monitoring, alarms, and structured logging
+- **AWS X-Ray**, Request tracing for the API and Lambda functions
+
+## Dashboard
+
+The deployment includes a React dashboard for configuring channels and rules and for inspecting signal processing. The screens below use sample data.
+
+The Channels page lists every configured channel with its default action, processing mode, rule count, and status. Administrators can create, edit, and delete channels from here.
+
+![POIS dashboard Channels page listing three channels with their default action, mode, rule count and status](docs/ui/channels.png)
+
+Rules are configured per channel. Each rule combines its conditions with AND, selects a signal action, and can carry modifications, alternate content for virtual input switching, and external actions. This example caps placement opportunities longer than 30 seconds.
+
+![Rule configuration form showing conditions on segmentation type and duration, a replace action, and a break duration modification](docs/ui/rule-configuration.png)
+
+The monitoring page polls CloudWatch Logs and shows recent ESAM activity, with the matched rule, the action taken, and a correlation ID that links the entries of a single request.
+
+![Live SCTE-35 feed with event counters and a table of processed signals showing event type, channel, correlation ID and details](docs/ui/live-feed.png)
+
+The dashboard also provides channel details with the ESAM endpoint and encoder credentials, a SCTE-35 decoder, user management for administrators, and the full in-app documentation.
 
 ## Features
 
 ### SCTE-35 Processing
 
-- Full SCTE-35 binary and base64 parsing via the threefive library
+- SCTE-35 binary and base64 parsing via the threefive library
 - Segmentation descriptor extraction and analysis
-- Signal encoding and re-assembly after modification
-- Support for all SCTE-35 segmentation types (program start/end, chapter, provider/distributor ad markers)
+- Signal re-encoding after modification
+- Rule matching and modification for the fields listed under [Configuring Rules](#configuring-rules), including provider and distributor placement opportunity types
 
 ### Rule Engine
 
 - Channel-scoped rule definitions with priority ordering
-- Conditional matching on segmentation type, duration, UPID, and custom fields
-- Rule chaining with short-circuit evaluation
-- Descriptor priority system for evaluation order
+- Conditional matching on command type, segmentation type, duration, UPID, zone identity, and the other fields listed under [Configuring Rules](#configuring-rules)
+- First-match evaluation: rules are sorted by ascending priority, and the first rule whose conditions all match determines the action
+- Descriptor priority setting that selects which segmentation descriptor supplies values during evaluation
 
 ### Signal Modification
 
-- Insert, update, or remove segmentation descriptors
-- Override duration, segmentation type ID, and UPID values
+- Add or remove segmentation descriptors
+- Override duration, segmentation type ID, UPID values, and delivery restriction flags
 - Conditional signal passthrough or suppression
-- Splice insert and time signal manipulation
+- Splice insert and time signal handling
 
 ### External Actions
 
-- AWS Elemental MediaLive SCTE-35 message injection
+- AWS Elemental MediaLive schedule actions, including SCTE-35 insertion, input switching, input preparation, and graphics overlays
 - Webhook notifications with configurable payloads
-- Asynchronous action execution to avoid processing latency
+- Ordered execution with per-action timeouts, retries, idempotency windows, and an optional dry-run mode
+- Actions run inside the ESAM request path: the SPN is returned after the configured actions finish, so action timeouts and retries add to encoder response time
+
+MediaLive actions need permissions that are not granted by default. Either pass the target channel ARNs at deploy time, which grants `medialive:BatchUpdateSchedule` and `medialive:DescribeSchedule` scoped to those channels:
+
+```bash
+npx cdk deploy --all \
+  -c adminEmail=you@example.com \
+  -c mediaLiveChannelArns=arn:aws:medialive:us-east-1:111122223333:channel:1234567
+```
+
+Or configure explicit credentials on the action to target a channel in another account. Use the dashboard's dry-run mode to validate an action configuration before it makes real API calls.
 
 ### Stateful Mode
 
-- Track active placement opportunities across signal boundaries
-- Correlate program start/end events with ad break signals
-- Maintain session state in DynamoDB with TTL-based expiration
+- Tracks whether a channel is currently inside an active break, across requests
+- Detects break start and break end from splice insert out-of-network indicators and placement opportunity segmentation types
+- Retains the break event ID and a calculated expiry time in DynamoDB, and suppresses further signals until a break end arrives or the expiry passes
 
 ### Authentication and RBAC
 
-- Cognito User Pool integration with JWT validation
-- Role-based access: Admin, Operator, Viewer
-- Per-channel access control policies
-- Structured audit logging for all configuration changes
+- Cognito User Pool integration with JWT validation at API Gateway
+- Two roles: `admin` and `user`. Authenticated users can read channel configuration and logs; administrators change channels and rules, manage users, and manage encoder credentials
+- Optional HTTP Basic Authentication for the `/esam` endpoint, configured per channel
+- Structured logging of configuration changes and signal processing, plus DynamoDB audit records for external actions
 
 ## Prerequisites
 
@@ -132,13 +193,25 @@ npx cdk bootstrap aws://<ACCOUNT_ID>/<REGION>
 npx cdk deploy --all -c adminEmail=you@example.com
 ```
 
-The `adminEmail` context value provisions the initial admin user: Cognito sends an invitation email with a temporary password to that address (self sign-up is disabled). If you omit it, no user is created and you must create one later with `aws cognito-idp admin-create-user`.
+The `adminEmail` context value provisions the initial admin user: Cognito sends an invitation email with a temporary password to that address (self sign-up is disabled). If you omit it, no user is created and you must create one later with two commands, because dashboard administration requires membership in the `admin` group:
+
+```bash
+aws cognito-idp admin-create-user \
+  --user-pool-id <USER_POOL_ID> \
+  --username you@example.com \
+  --user-attributes Name=email,Value=you@example.com Name=email_verified,Value=true Name=name,Value=Administrator
+
+aws cognito-idp admin-add-user-to-group \
+  --user-pool-id <USER_POOL_ID> \
+  --username you@example.com \
+  --group-name admin
+```
 
 CDK prompts for approval before creating IAM resources in each stack. To deploy non-interactively (CI or scripted deployments), add `--require-approval never`.
 
 The deployment region follows your AWS CLI configuration. To deploy to a specific region, set `AWS_REGION` (for example, `AWS_REGION=us-west-2 npx cdk deploy --all -c adminEmail=you@example.com`).
 
-Stacks are named `pois-reference-server-<env>-*`, where `<env>` defaults to `dev`. Pass `-c env=staging` or `-c env=prod` to deploy a different environment profile (longer log retention, higher API throttling limits — see `infrastructure/lib/config/environment.ts`). Because the environment is part of every stack name, multiple environments can coexist in the same account and region.
+Stacks are named `pois-reference-server-<env>-*`, where `<env>` defaults to `dev`. Pass `-c env=staging` or `-c env=prod` to deploy a different environment profile, which changes log retention, API throttling limits, and whether API Gateway data trace logging is enabled — see `infrastructure/lib/config/environment.ts`. Because the environment is part of every stack name, multiple environments can coexist in the same account and region.
 
 No frontend configuration is needed: CloudFront serves the dashboard and proxies `/api/*` to API Gateway, and the dashboard fetches its Cognito configuration at runtime.
 
@@ -157,7 +230,7 @@ After deployment, CDK outputs the API Gateway URL, CloudFront distribution URL (
 | GET | `/logs` | Query processing logs |
 | GET | `/auth/config` | Get Cognito configuration for frontend |
 
-The `/esam` endpoint uses HTTP Basic Authentication with per-channel credentials generated through the dashboard. Management endpoints (`/channels`, `/logs`) require a valid Cognito JWT token in the `Authorization` header.
+The `/esam` endpoint can require HTTP Basic Authentication with per-channel credentials generated through the dashboard. Basic Authentication is configured per channel and is disabled until you enable it. Management endpoints (`/channels`, `/logs`) require a valid Cognito JWT token in the `Authorization` header.
 
 ## Configuration
 
@@ -180,24 +253,38 @@ A channel represents a video stream source with its own set of processing rules:
 
 ### Configuring Rules
 
-Rules define how signals are processed for a given channel. Rules are evaluated in priority order:
+Rules define how signals are processed for a given channel. Rules are sorted by ascending `priority`, and the first rule whose conditions all match determines the action. Conditions inside a rule are combined with AND. If no rule matches, the channel's `defaultAction` applies.
+
+This rule caps placement opportunities longer than 30 seconds:
 
 ```json
 {
-  "ruleId": "extend-short-breaks",
-  "name": "Extend short breaks",
+  "ruleId": "cap-long-breaks",
+  "name": "Cap breaks longer than 30s",
   "priority": 1,
   "enabled": true,
   "conditions": [
-    { "field": "segmentationTypeId", "operator": "eq", "value": "52" },
-    { "field": "duration", "operator": "lt", "value": "30" }
+    { "field": "segmentationTypeId", "operator": "eq", "value": 52 },
+    { "field": "duration", "operator": "gt", "value": 30 }
   ],
   "action": "replace",
   "modifications": [
-    { "target": "break_duration", "operation": "set", "value": "30" }
+    { "target": "breakDuration", "operation": "set", "value": 30 }
   ]
 }
 ```
+
+Segmentation type `52` is `0x34`, Provider Placement Opportunity Start. Configure condition and modification values as decimal numbers.
+
+**Condition fields:** `commandType`, `segmentationTypeId`, `duration`, `ptsAdjustment`, `tier`, `upidType`, `upidValue`, `eventId`, `descriptorCount`, `outOfNetwork`, and `zoneIdentity`.
+
+**Condition operators:** `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `range`, `in`, and `notIn`.
+
+**Rule actions:** `noop` passes the signal through, `delete` suppresses it, and `replace` applies the rule's modifications.
+
+**Modification targets:** `breakDuration` and `segmentationDuration` (in seconds), `ptsAdjustment`, `segmentationTypeId`, `commandType`, `upidType`, `upidValue`, `webDeliveryAllowed`, `noRegionalBlackout`, `archiveAllowed`, `deviceRestrictions`, `addDescriptor`, and `removeDescriptor`.
+
+Choose the duration target that matches the signal you are conditioning: `breakDuration` applies to a splice insert command, and `segmentationDuration` applies to a segmentation descriptor.
 
 ### Descriptor Priority
 
@@ -227,7 +314,20 @@ https://<API_URL>/esam
 
 The encoder sends SCTE-35 signals as ESAM SignalProcessingEvent XML. The POIS server evaluates rules and returns a SignalProcessingNotification response.
 
-Authentication: The endpoint uses HTTP Basic Auth. Credentials are generated automatically when you create a channel with "Encoder Authentication" enabled in the dashboard.
+Authentication: Enable "Encoder Authentication" on the channel to require HTTP Basic Auth on `/esam`. Credentials are generated when you enable it, and the password is stored as a Parameter Store SecureString. Without it, the endpoint accepts ESAM requests for that channel without application authentication.
+
+### Request path behavior
+
+The POIS answers the encoder inside a single HTTP request, so its failure behavior is part of your signal path:
+
+- The signal-processing function has a 30-second Lambda timeout. API Gateway applies its own request timeout, and the deployed stage is throttled according to the environment profile (`dev` allows 100 requests per second with a burst of 200).
+- Unknown channels, disabled channels, and channel lookup failures return a `noop` SPN with a status note, which preserves the original signal.
+- If the SCTE-35 payload cannot be parsed, the channel's `defaultAction` is applied.
+- Break-state read and write failures are logged and processing continues without state.
+- External action failures are logged and do not by themselves turn the ESAM response into an error, but the response waits for the configured timeouts and retries.
+- If the POIS itself is unreachable or times out, the encoder applies its own configured behavior for a failed ESAM request. Validate that behavior on the encoder before relying on this service in a signal path.
+
+This repository does not publish latency benchmarks. Measure processing time, cold start behavior, and failure handling with your own payloads, rules, and traffic before making performance assumptions.
 
 ## Local Development
 
@@ -242,7 +342,7 @@ The dashboard is then available at `http://localhost:3000` with hot reload, auth
 
 ## Cost Estimation
 
-This solution uses serverless services that scale to zero when idle. Estimated monthly costs for a development or low-traffic workload:
+This solution uses serverless services whose request charges drop to near zero when idle, while storage, logs, metrics, and alarms continue to accrue. The following figures are an indicative estimate for a development or low-traffic workload, not a quote. Prices and free tier allowances vary by AWS Region and change over time.
 
 | Service | Estimated Cost |
 |---------|---------------|
@@ -271,18 +371,34 @@ cd infrastructure
 npx cdk destroy --all
 ```
 
-This removes all CloudFormation stacks and their data, including Lambda functions, DynamoDB tables, the API Gateway, the Cognito User Pool, the frontend bucket, and CloudWatch resources.
+Pass the same environment context you deployed with, for example `npx cdk destroy --all -c env=staging`.
+
+This deletes the CloudFormation stacks and the data they own, including Lambda functions, DynamoDB tables and their contents, the API Gateway, the Cognito User Pool and its users, the frontend bucket, and CloudWatch resources.
+
+Two items are not stack-managed and need a check afterwards:
+
+- **Per-channel encoder passwords.** They are created at runtime as Parameter Store SecureStrings under `/pois/channels/`. Disabling channel authentication removes the parameter, but deleting a channel or destroying the stacks can leave it behind. List and remove any that you no longer need:
+
+  ```bash
+  aws ssm get-parameters-by-path --path /pois/channels --recursive --query 'Parameters[].Name'
+  ```
+
+- **CloudWatch log groups** retained by their retention policy.
+
+Confirm in AWS Billing and Cost Management that no unexpected charges remain.
 
 ## Security
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for information on reporting security issues.
 
-- **Authentication**: All management APIs are protected by Amazon Cognito with JWT validation at the API Gateway level
-- **Authorization**: Role-based access control (admin, user) enforced in the Lambda handlers via the `cognito:groups` JWT claim
-- **Credential Management**: Per-channel ESAM encoder passwords are generated server-side and stored as AWS Systems Manager Parameter Store SecureStrings
-- **Audit Logging**: All configuration changes and signal processing events are logged with structured metadata to DynamoDB and CloudWatch
-- **Encryption**: Data encrypted at rest (DynamoDB, SSM SecureString) and in transit (TLS 1.2+)
-- **Input Validation**: All API inputs validated with Pydantic models to prevent injection and malformed payloads
+- **Authentication**: Management APIs are protected by Amazon Cognito with JWT validation at the API Gateway level. The `/esam` and `/auth/config` endpoints are not behind the Cognito authorizer; `/esam` can require per-channel Basic Authentication instead
+- **Authorization**: Role-based access control (`admin`, `user`) enforced in the Lambda handlers via the `cognito:groups` JWT claim. Authenticated users share read access to channels and logs; there is no per-channel access scope
+- **Credential Management**: Per-channel ESAM encoder passwords are generated server-side and stored as AWS Systems Manager Parameter Store SecureStrings. Administrators can reveal and regenerate them from the dashboard
+- **Audit Logging**: Configuration changes and signal processing are recorded as structured CloudWatch logs, and external action executions are recorded in DynamoDB
+- **Encryption**: Data encrypted at rest (DynamoDB, SSM SecureString) and in transit (TLS)
+- **Input Validation**: Channel and rule configuration is validated with Pydantic models. ESAM XML and external action plugin configuration use their own parsing and validation paths
+
+This is sample code. Before production use, review at least the following: MFA enforcement, the permissive CORS configuration, API Gateway data trace logging, resource removal policies, log retention and log content, credential rotation, IAM scoping, and whether `/esam` should be reachable without authentication.
 
 ## Contributing
 

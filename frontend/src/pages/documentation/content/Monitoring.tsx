@@ -21,19 +21,34 @@ export const Metrics: React.FC = () => {
       <div className="p-8 space-y-8">
         <section>
           <h2 className="text-2xl font-bold text-slate-900 mb-4">Key Metrics</h2>
+          <p className="text-slate-700 leading-relaxed mb-4">
+            The CloudWatch dashboard created by the monitoring stack graphs API Gateway
+            request count, errors and latency, Lambda duration and errors, and DynamoDB
+            capacity consumption. Signal throughput and response time depend on your
+            payloads, rule sets, external actions and traffic pattern.
+          </p>
           <div className="grid md:grid-cols-2 gap-6">
             <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">Processing Rate</h3>
-              <div className="text-3xl font-bold text-slate-900 mb-2">~50 req/s</div>
-              <p className="text-sm text-slate-600">Signals processed per second</p>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Throughput</h3>
+              <p className="text-sm text-slate-600">
+                Bounded by the API Gateway stage throttling limits of the deployed
+                environment profile and by your Lambda concurrency.
+              </p>
             </div>
 
             <div className="p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border border-green-200">
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">P95 Latency</h3>
-              <div className="text-3xl font-bold text-slate-900 mb-2">&lt; 150ms</div>
-              <p className="text-sm text-slate-600">95% of requests</p>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Response time</h3>
+              <p className="text-sm text-slate-600">
+                Measure it in your own environment. External actions run inside the ESAM
+                request path, so their timeouts and retries add to encoder response time.
+              </p>
             </div>
           </div>
+          <Callout type="info" title="No published benchmark">
+            This sample does not ship latency or throughput benchmarks. Use the dashboard,
+            X-Ray traces and your own load tests to establish baselines before relying on
+            the service in a signal path.
+          </Callout>
         </section>
 
         {/* UI Preview - Live Event Feed */}

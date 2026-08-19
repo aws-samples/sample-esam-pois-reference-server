@@ -25,8 +25,10 @@ export const StatefulMode: React.FC = () => {
           <p className="text-slate-700 leading-relaxed mb-4">
             Stateful Mode tracks ad break state across multiple SCTE-35 signals, enabling the POIS server
             to understand the full lifecycle of an ad break, from cue-out to cue-in. When enabled,
-            the system automatically suppresses redundant signals during an active break and detects
-            break boundaries using splice_insert commands with <code className="px-2 py-1 bg-slate-100 rounded text-sm">out_of_network_indicator</code>.
+            the system suppresses redundant signals during an active break. Break boundaries are detected
+            from splice_insert commands via <code className="px-2 py-1 bg-slate-100 rounded text-sm">out_of_network_indicator</code>,
+            and from placement opportunity segmentation types (0x34, 0x36, 0x38, 0x3A for a start and
+            0x35, 0x37, 0x39, 0x3B for an end). One active break is tracked per channel.
           </p>
           <Callout type="info" title="When to Use Stateful Mode">
             Enable stateful mode when your workflow sends multiple SCTE-35 signals during an ad break
