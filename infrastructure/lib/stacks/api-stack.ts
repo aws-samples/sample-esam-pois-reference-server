@@ -19,6 +19,31 @@ export interface ApiStackProps extends cdk.StackProps {
   userPool?: cognito.IUserPool;
   userPoolClientId?: string;
   logRetentionDays?: number;
+  /**
+   * Enables API Gateway data trace logging, which writes full request and
+   * response payloads (including ESAM XML) to CloudWatch. Useful while
+   * developing, but it increases log volume and cost. Defaults to true so the
+   * sample stays easy to debug; the `prod` environment profile disables it.
+   */
+  enableDetailedLogging?: boolean;
+  /** Enables AWS X-Ray tracing on the API stage and Lambda functions. */
+  enableXRayTracing?: boolean;
+  apiThrottleRateLimit?: number;
+  apiThrottleBurstLimit?: number;
+  /**
+   * AWS Elemental MediaLive channel ARNs that the signal processor may update
+   * with the MediaLive external-action plugin.
+   *
+   * The grant is opt-in because the plugin is optional: without it, the
+   * processor has no MediaLive permissions at all. Pass channel ARNs at deploy
+   * time, for example:
+   *
+   *   npx cdk deploy --all -c mediaLiveChannelArns=arn:aws:medialive:us-east-1:111122223333:channel:1234567
+   *
+   * Actions can also target another account by configuring explicit
+   * credentials on the action itself, in which case no grant is needed here.
+   */
+  mediaLiveChannelArns?: string[];
 }
 
 export class ApiStack extends cdk.Stack {
@@ -34,6 +59,16 @@ export class ApiStack extends cdk.Stack {
     // Log retention from config (default 7 days)
     const logRetention = this._toLogRetention(props.logRetentionDays || 7);
 
+    // Environment-driven observability and throttling settings. Defaults match
+    // the `dev` profile in lib/config/environment.ts.
+    const detailedLogging = props.enableDetailedLogging ?? true;
+    const xRayTracing = props.enableXRayTracing ?? true;
+    const throttleRateLimit = props.apiThrottleRateLimit ?? 100;
+    const throttleBurstLimit = props.apiThrottleBurstLimit ?? 200;
+    const lambdaTracing = xRayTracing
+      ? lambda.Tracing.ACTIVE
+      : lambda.Tracing.DISABLED;
+
     // Backend code root used for handler bundling.
     const backendDir = path.join(__dirname, '../../../backend');
 
@@ -46,12 +81,14 @@ export class ApiStack extends cdk.Stack {
       description: 'POIS Reference Server API',
       deployOptions: {
         stageName: 'v1',
-        tracingEnabled: true,
-        loggingLevel: apigateway.MethodLoggingLevel.INFO,
-        dataTraceEnabled: true,
+        tracingEnabled: xRayTracing,
+        loggingLevel: detailedLogging
+          ? apigateway.MethodLoggingLevel.INFO
+          : apigateway.MethodLoggingLevel.ERROR,
+        dataTraceEnabled: detailedLogging,
         metricsEnabled: true,
-        throttlingBurstLimit: 100,
-        throttlingRateLimit: 50,
+        throttlingBurstLimit: throttleBurstLimit,
+        throttlingRateLimit: throttleRateLimit,
       },
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
@@ -159,7 +196,7 @@ export class ApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 512,
       description: 'ESAM signal processor',
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambdaTracing,
       logRetention: logRetention,
     });
 
@@ -170,6 +207,23 @@ export class ApiStack extends cdk.Stack {
       actions: ['ssm:GetParameter'],
       resources: [`arn:aws:ssm:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:parameter/pois/channels/*`],
     }));
+
+    // Optional MediaLive external actions. Scoped to the channel ARNs supplied
+    // at deploy time; the plugin is unusable with the execution role until this
+    // grant exists.
+    const mediaLiveChannelArns = props.mediaLiveChannelArns?.filter((arn) => arn.length > 0) ?? [];
+    if (mediaLiveChannelArns.length > 0) {
+      signalProcessor.addToRolePolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: [
+            'medialive:BatchUpdateSchedule',
+            'medialive:DescribeSchedule',
+          ],
+          resources: mediaLiveChannelArns,
+        })
+      );
+    }
 
     this.lambdaFunctions.push(signalProcessor);
 
@@ -189,7 +243,7 @@ export class ApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       description: 'Channel configuration management',
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambdaTracing,
       logRetention: logRetention,
     });
 
@@ -241,7 +295,7 @@ export class ApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       description: 'CloudWatch logs query service',
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambdaTracing,
       logRetention: logRetention,
     });
 
@@ -276,7 +330,7 @@ export class ApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       description: 'External actions management API',
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambdaTracing,
       logRetention: logRetention,
     });
 
@@ -363,7 +417,7 @@ export class ApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(10),
       memorySize: 256,
       description: 'User preferences and system defaults',
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambdaTracing,
       logRetention: logRetention,
     });
 
@@ -406,7 +460,7 @@ export class ApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(10),
       memorySize: 256,
       description: 'Auth configuration endpoint',
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambdaTracing,
       logRetention: logRetention,
     });
 
@@ -433,7 +487,7 @@ export class ApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       description: 'User management API (admin-only)',
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambdaTracing,
       logRetention: logRetention,
     });
 
