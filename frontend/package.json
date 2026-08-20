@@ -17,7 +17,7 @@
     "react-beautiful-dnd": "^13.1.1",
     "react-dom": "^18.2.0",
     "react-redux": "^9.0.0",
-    "react-router-dom": "^6.20.0",
+    "react-router-dom": "^7.18.2",
     "recharts": "^2.10.0",
     "redux-persist": "^6.0.0",
     "scte35": "^0.7.0"
