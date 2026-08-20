@@ -732,21 +732,19 @@ def calculate_break_expiry_time(
     """
     duration_seconds = 0
 
-    # Get duration from Splice Insert command
+    # Get duration from Splice Insert command, stored as 90kHz ticks
     if signal.splice_command_type == SpliceCommandType.SPLICE_INSERT:
         if isinstance(signal.splice_command, SpliceInsert):
             if signal.splice_command.break_duration:
-                # Convert from 90kHz ticks to seconds
                 duration_seconds = (
                     signal.splice_command.break_duration.duration // 90000
                 )
 
-    # Get duration from segmentation descriptor
+    # Get duration from segmentation descriptor, already in seconds
     if duration_seconds == 0 and signal.splice_descriptors:
         for desc in signal.splice_descriptors:
             if desc.descriptor_tag == 0x02 and desc.segmentation_duration:
-                # Convert from 90kHz ticks to seconds
-                duration_seconds = desc.segmentation_duration // 90000
+                duration_seconds = int(desc.segmentation_duration)
                 break
 
     if duration_seconds == 0:

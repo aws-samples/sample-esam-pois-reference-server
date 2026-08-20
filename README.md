@@ -23,7 +23,7 @@ You configure a channel rule that caps long placement opportunities:
 ```text
 IF   segmentationTypeId = 52  (0x34)
 AND  duration > 30
-THEN set breakDuration to 30
+THEN set segmentationDuration to 30
 ```
 
 The POIS returns the conditioned signal in the same HTTP response:
@@ -31,7 +31,7 @@ The POIS returns the conditioned signal in the same HTTP response:
 ```text
 Encoder → ESAM SignalProcessingEvent → POIS → rule engine
        → ESAM SignalProcessingNotification (action "replace")
-       → encoder emits SCTE-35 with a 30s break duration
+       → encoder emits SCTE-35 with a 30 second segmentation duration
 ```
 
 The same rule match can also select an alternate input for AWS Elemental Live Virtual Input Switching, or invoke an external action such as a webhook or an AWS Elemental MediaLive schedule update.
@@ -196,16 +196,26 @@ npx cdk deploy --all -c adminEmail=you@example.com
 The `adminEmail` context value provisions the initial admin user: Cognito sends an invitation email with a temporary password to that address (self sign-up is disabled). If you omit it, no user is created and you must create one later with two commands, because dashboard administration requires membership in the `admin` group:
 
 ```bash
+# 1. Create the account. Cognito emails a temporary password; EMAIL is stated
+#    explicitly to match the deployment path, since the pool signs in with
+#    email and stores no phone number.
 aws cognito-idp admin-create-user \
   --user-pool-id <USER_POOL_ID> \
   --username you@example.com \
-  --user-attributes Name=email,Value=you@example.com Name=email_verified,Value=true Name=name,Value=Administrator
+  --user-attributes Name=email,Value=you@example.com Name=email_verified,Value=true Name=name,Value=Administrator \
+  --desired-delivery-mediums EMAIL
 
+# 2. Grant administrator access. The handlers authorize writes from the
+#    "cognito:groups" claim, so an account created by step 1 alone belongs to
+#    no group: it can read channels and logs, but cannot change them, manage
+#    users, or view encoder credentials.
 aws cognito-idp admin-add-user-to-group \
   --user-pool-id <USER_POOL_ID> \
   --username you@example.com \
   --group-name admin
 ```
+
+`<USER_POOL_ID>` is the `UserPoolId` output of the deployment. The account signs in with the temporary password and is then prompted to choose a permanent one.
 
 CDK prompts for approval before creating IAM resources in each stack. To deploy non-interactively (CI or scripted deployments), add `--require-approval never`.
 
@@ -269,7 +279,7 @@ This rule caps placement opportunities longer than 30 seconds:
   ],
   "action": "replace",
   "modifications": [
-    { "target": "breakDuration", "operation": "set", "value": 30 }
+    { "target": "segmentationDuration", "operation": "set", "value": 30 }
   ]
 }
 ```
@@ -284,7 +294,7 @@ Segmentation type `52` is `0x34`, Provider Placement Opportunity Start. Configur
 
 **Modification targets:** `breakDuration` and `segmentationDuration` (in seconds), `ptsAdjustment`, `segmentationTypeId`, `commandType`, `upidType`, `upidValue`, `webDeliveryAllowed`, `noRegionalBlackout`, `archiveAllowed`, `deviceRestrictions`, `addDescriptor`, and `removeDescriptor`.
 
-Choose the duration target that matches the signal you are conditioning: `breakDuration` applies to a splice insert command, and `segmentationDuration` applies to a segmentation descriptor.
+Choose the duration target that matches the signal you are conditioning: `breakDuration` applies to a splice insert command, and `segmentationDuration` applies to a segmentation descriptor. Targeting the wrong one leaves the payload unchanged even though the response still reports `replace`, so verify the conditioned signal for your source format.
 
 ### Descriptor Priority
 

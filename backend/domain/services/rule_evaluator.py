@@ -12,6 +12,7 @@ from domain.models.scte35 import (
     SpliceCommandType,
     SpliceInsert,
 )
+
 from domain.models.channel import (
     Rule,
     Condition,
@@ -424,19 +425,23 @@ def _get_event_id(signal: SpliceInfoSection) -> Optional[int]:
 
 
 def _get_duration(signal: SpliceInfoSection) -> Optional[int]:
-    """Get duration from command or descriptor (in seconds)."""
-    # Try break duration from Splice Insert
+    """
+    Get duration from command or descriptor, in seconds.
+
+    The two carriers use different units in this model: BreakDuration.duration
+    holds 90kHz ticks, while SegmentationDescriptor.segmentation_duration holds
+    seconds, as parsed from threefive.
+    """
+    # Break duration from Splice Insert, stored as 90kHz ticks
     if signal.splice_command_type == SpliceCommandType.SPLICE_INSERT:
         if isinstance(signal.splice_command, SpliceInsert):
             if signal.splice_command.break_duration:
-                # Convert from 90kHz ticks to seconds
                 return signal.splice_command.break_duration.duration // 90000
 
-    # Try segmentation duration from descriptor
+    # Segmentation duration from descriptor, already in seconds
     for desc in signal.splice_descriptors:
         if desc.descriptor_tag == 0x02 and desc.segmentation_duration:
-            # Convert from 90kHz ticks to seconds
-            return desc.segmentation_duration // 90000
+            return int(desc.segmentation_duration)
 
     return None
 

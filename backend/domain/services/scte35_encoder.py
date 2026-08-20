@@ -181,3 +181,17 @@ def _apply_modifications_to_cue(cue: threefive.Cue, signal: SpliceInfoSection) -
                     cue_desc.segmentation_type_id = signal_desc.segmentation_type_id
                     cue_desc.segment_num = signal_desc.segment_num
                     cue_desc.segments_expected = signal_desc.segments_expected
+
+                    # SCTE-35 carries sub_segment_num and sub_segments_expected
+                    # for the placement opportunity Start types, and threefive
+                    # refuses to encode a descriptor of those types while they
+                    # are unset. Sources are not required to send them, and
+                    # decoding leaves them as None, so a rule that modified
+                    # such a descriptor used to fail encoding and silently
+                    # return the unmodified signal. Default them to 0, the
+                    # spec's value for "not used".
+                    if cue_desc.segmentation_type_id in (0x34, 0x36, 0x38, 0x3A):
+                        if getattr(cue_desc, "sub_segment_num", None) is None:
+                            cue_desc.sub_segment_num = 0
+                        if getattr(cue_desc, "sub_segments_expected", None) is None:
+                            cue_desc.sub_segments_expected = 0
