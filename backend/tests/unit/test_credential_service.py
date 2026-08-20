@@ -129,3 +129,65 @@ class TestDeletePassword:
         )
         with pytest.raises(ClientError):
             service.delete_password("/pois/channels/c1/esam-password")
+
+
+class TestPathPrefix:
+    """Credentials are namespaced so environments never share a prefix."""
+
+    def test_defaults_when_unset(self, mock_ssm, monkeypatch):
+        monkeypatch.delenv("CREDENTIAL_PATH_PREFIX", raising=False)
+        service = CredentialService(ssm_client=mock_ssm)
+
+        assert (
+            service.store_password("c1", "secret") == "/pois/channels/c1/esam-password"
+        )
+
+    def test_reads_the_environment_variable(self, mock_ssm, monkeypatch):
+        monkeypatch.setenv("CREDENTIAL_PATH_PREFIX", "/pois/prod/channels")
+        service = CredentialService(ssm_client=mock_ssm)
+
+        assert (
+            service.store_password("c1", "secret")
+            == "/pois/prod/channels/c1/esam-password"
+        )
+
+    def test_explicit_argument_wins(self, mock_ssm, monkeypatch):
+        monkeypatch.setenv("CREDENTIAL_PATH_PREFIX", "/pois/prod/channels")
+        service = CredentialService(
+            ssm_client=mock_ssm, path_prefix="/pois/staging/channels"
+        )
+
+        assert (
+            service.store_password("c1", "secret")
+            == "/pois/staging/channels/c1/esam-password"
+        )
+
+    def test_trailing_slash_does_not_double_up(self, mock_ssm):
+        service = CredentialService(
+            ssm_client=mock_ssm, path_prefix="/pois/dev/channels/"
+        )
+
+        assert (
+            service.store_password("c1", "secret")
+            == "/pois/dev/channels/c1/esam-password"
+        )
+
+    def test_environments_do_not_collide(self, mock_ssm):
+        dev = CredentialService(ssm_client=mock_ssm, path_prefix="/pois/dev/channels")
+        prod = CredentialService(ssm_client=mock_ssm, path_prefix="/pois/prod/channels")
+
+        assert dev.store_password("same-id", "a") != prod.store_password("same-id", "b")
+
+    def test_reads_use_the_recorded_path_not_the_prefix(self, mock_ssm):
+        """A credential written under an earlier prefix stays readable."""
+        mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "legacy-secret"}}
+        service = CredentialService(
+            ssm_client=mock_ssm, path_prefix="/pois/dev/channels"
+        )
+
+        assert (
+            service.get_password("/pois/channels/old/esam-password") == "legacy-secret"
+        )
+        mock_ssm.get_parameter.assert_called_once_with(
+            Name="/pois/channels/old/esam-password", WithDecryption=True
+        )

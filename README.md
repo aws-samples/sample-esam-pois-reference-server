@@ -385,13 +385,15 @@ Use the same environment context you deployed with, for example `npx cdk destroy
 
 This deletes the stacks and their data: Lambda functions, DynamoDB tables and their contents, the API Gateway, the Cognito User Pool and its users, the frontend bucket, and CloudWatch resources.
 
-Delete your channels from the dashboard before destroying the stacks. Encoder passwords are created at runtime in Parameter Store, so CloudFormation does not own them: deleting a channel removes its password, but destroying the stacks with channels still configured leaves the passwords behind. To check afterwards:
+Encoder passwords are created at runtime in Parameter Store, so CloudFormation does not own them. Teardown deletes them anyway: the API stack carries a custom resource that removes everything under the environment's credential prefix, `/pois/<env>/channels`. Nothing to do by hand.
+
+Lambda log groups outlive the stacks and expire on their own according to the retention period.
+
+If you deployed a release earlier than this one, credentials were stored under the shared `/pois/channels` prefix instead. Those keep working, because each channel records its own parameter path, but teardown does not remove them:
 
 ```bash
 aws ssm get-parameters-by-path --path /pois/channels --recursive --query 'Parameters[].Name'
 ```
-
-Lambda log groups also outlive the stacks, and expire on their own according to the retention period.
 
 ## Security
 
@@ -399,7 +401,7 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for information
 
 - **Authentication**: Management APIs are protected by Amazon Cognito with JWT validation at the API Gateway level. The `/esam` and `/auth/config` endpoints are not behind the Cognito authorizer; `/esam` can require per-channel Basic Authentication instead
 - **Authorization**: Role-based access control (`admin`, `user`) enforced in the Lambda handlers via the `cognito:groups` JWT claim. Authenticated users share read access to channels and logs; there is no per-channel access scope
-- **Credential Management**: Per-channel ESAM encoder passwords are generated server-side and stored as AWS Systems Manager Parameter Store SecureStrings. Administrators can reveal and regenerate them from the dashboard
+- **Credential Management**: Per-channel ESAM encoder passwords are generated server-side and stored as AWS Systems Manager Parameter Store SecureStrings, namespaced per environment under `/pois/<env>/channels` so that environments sharing an account and Region cannot read or delete each other's credentials. Administrators can reveal and regenerate them from the dashboard, and they are deleted with the channel and on teardown
 - **Audit Logging**: Configuration changes and signal processing are recorded as structured CloudWatch logs, and external action executions are recorded in DynamoDB
 - **Encryption**: Data encrypted at rest (DynamoDB, SSM SecureString) and in transit (TLS)
 - **Input Validation**: Channel and rule configuration is validated with Pydantic models. ESAM XML and external action plugin configuration use their own parsing and validation paths

@@ -12,8 +12,18 @@ import { Construct } from 'constructs';
 import * as path from 'path';
 import { buildPythonLayer } from '../utils/python-layer';
 import { buildPythonHandlerAsset } from '../utils/python-handler';
+import { ChannelCredentialPurge } from '../constructs/channel-credential-purge';
+
+/**
+ * Prefix used by deployments before credentials were namespaced per
+ * environment. Still granted so that channels created by an earlier deployment
+ * keep working: reads and deletes use the path recorded on the channel.
+ */
+const LEGACY_CREDENTIAL_PREFIX = '/pois/channels';
 
 export interface ApiStackProps extends cdk.StackProps {
+  /** Environment name, used to namespace runtime-created credentials. */
+  envName: string;
   table: dynamodb.Table;
   preferencesTable?: dynamodb.Table;
   userPool?: cognito.IUserPool;
@@ -180,6 +190,21 @@ export class ApiStack extends cdk.Stack {
     );
 
     // =========================================================================
+    // Encoder credential namespace
+    //
+    // Credentials are created at runtime, so they are namespaced per
+    // environment: two environments in the same account and Region must not
+    // share a prefix, otherwise destroying one would delete the other's
+    // secrets. The legacy prefix stays granted so channels created before this
+    // change keep working, since reads and deletes use the path recorded on the
+    // channel.
+    // =========================================================================
+    const credentialPrefix = `/pois/${props.envName}/channels`;
+    const ssmArn = (prefix: string) =>
+      `arn:aws:ssm:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:parameter${prefix}/*`;
+    const credentialArns = [ssmArn(credentialPrefix), ssmArn(LEGACY_CREDENTIAL_PREFIX)];
+
+    // =========================================================================
     // Lambda Functions
     // =========================================================================
 
@@ -191,6 +216,7 @@ export class ApiStack extends cdk.Stack {
       layers: [scte35Layer, validationLayer],
       environment: {
         CHANNELS_TABLE_NAME: props.table.tableName,
+        CREDENTIAL_PATH_PREFIX: credentialPrefix,
         LOG_LEVEL: 'INFO',
       },
       timeout: cdk.Duration.seconds(30),
@@ -205,7 +231,7 @@ export class ApiStack extends cdk.Stack {
     // SSM read-only access for ESAM auth credential validation
     signalProcessor.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter'],
-      resources: [`arn:aws:ssm:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:parameter/pois/channels/*`],
+      resources: credentialArns,
     }));
 
     // Optional MediaLive external actions. Scoped to the channel ARNs supplied
@@ -235,6 +261,7 @@ export class ApiStack extends cdk.Stack {
       layers: [validationLayer],
       environment: {
         CHANNELS_TABLE_NAME: props.table.tableName,
+        CREDENTIAL_PATH_PREFIX: credentialPrefix,
         LOG_LEVEL: 'INFO',
         API_ID: this.api.restApiId,
         REGION: cdk.Stack.of(this).region,
@@ -252,7 +279,7 @@ export class ApiStack extends cdk.Stack {
     // SSM full access for credential lifecycle (create, read, delete)
     channelManager.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter', 'ssm:PutParameter', 'ssm:DeleteParameter'],
-      resources: [`arn:aws:ssm:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:parameter/pois/channels/*`],
+      resources: credentialArns,
     }));
 
     this.lambdaFunctions.push(channelManager);
@@ -547,6 +574,15 @@ export class ApiStack extends cdk.Stack {
       value: `${this.apiUrl}esam`,
       description: 'ESAM endpoint for video encoder integration',
       exportName: `${id}-esam-endpoint`,
+    });
+
+    // =========================================================================
+    // Teardown of runtime-created credentials
+    // =========================================================================
+
+    new ChannelCredentialPurge(this, 'CredentialPurge', {
+      parameterPrefix: credentialPrefix,
+      logRetention,
     });
 
     cdk.Tags.of(this).add('Component', 'API');
