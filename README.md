@@ -381,21 +381,17 @@ cd infrastructure
 npx cdk destroy --all
 ```
 
-Pass the same environment context you deployed with, for example `npx cdk destroy --all -c env=staging`.
+Use the same environment context you deployed with, for example `npx cdk destroy --all -c env=staging`.
 
-This deletes the CloudFormation stacks and the data they own, including Lambda functions, DynamoDB tables and their contents, the API Gateway, the Cognito User Pool and its users, the frontend bucket, and CloudWatch resources.
+This deletes the stacks and their data: Lambda functions, DynamoDB tables and their contents, the API Gateway, the Cognito User Pool and its users, the frontend bucket, and CloudWatch resources.
 
-Two items are not stack-managed and need a check afterwards:
+Delete your channels from the dashboard before destroying the stacks. Encoder passwords are created at runtime in Parameter Store, so CloudFormation does not own them: deleting a channel removes its password, but destroying the stacks with channels still configured leaves the passwords behind. To check afterwards:
 
-- **Per-channel encoder passwords.** They are created at runtime as Parameter Store SecureStrings under `/pois/channels/`, so they are not CloudFormation resources and `cdk destroy` cannot remove them. Disabling channel authentication and deleting a channel both remove the parameter, but destroying the stacks while channels still exist leaves it behind. Check for leftovers:
+```bash
+aws ssm get-parameters-by-path --path /pois/channels --recursive --query 'Parameters[].Name'
+```
 
-  ```bash
-  aws ssm get-parameters-by-path --path /pois/channels --recursive --query 'Parameters[].Name'
-  ```
-
-- **CloudWatch log groups** retained by their retention policy.
-
-Confirm in AWS Billing and Cost Management that no unexpected charges remain.
+Lambda log groups also outlive the stacks, and expire on their own according to the retention period.
 
 ## Security
 
