@@ -574,8 +574,15 @@ def _delete_channel(
     logger: StructuredLogger,
     correlation_id: str,
 ) -> Dict[str, Any]:
-    """Delete channel."""
+    """Delete channel and the encoder credential it owns."""
     try:
+        # Capture the credential path before the channel record is gone, so the
+        # SecureString does not outlive the channel that owns it.
+        existing = channel_repo.get_channel(channel_id)
+        ssm_parameter_path = None
+        if existing and existing.auth_config:
+            ssm_parameter_path = existing.auth_config.ssm_parameter_path
+
         deleted = channel_repo.delete_channel(channel_id)
 
         if not deleted:
@@ -594,6 +601,27 @@ def _delete_channel(
             targetId=channel_id,
             targetType="channel",
         )
+
+        # The channel is already gone, so a failure here must not fail the
+        # request. Log it loudly instead: the parameter would otherwise linger
+        # as an orphaned credential.
+        if ssm_parameter_path:
+            try:
+                credential_service.delete_password(ssm_parameter_path)
+                logger.info(
+                    "Encoder credential deleted",
+                    action="auth.credential_deleted",
+                    channelId=channel_id,
+                    performedBy=caller.email,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to delete encoder credential - remove the parameter manually",
+                    action="auth.credential_delete_failed",
+                    channelId=channel_id,
+                    ssmParameterPath=ssm_parameter_path,
+                    error=str(e),
+                )
 
         return _success_response(
             data={"message": f"Channel deleted: {channel_id}"},

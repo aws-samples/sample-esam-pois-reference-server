@@ -353,3 +353,68 @@ class TestGetAuthPassword:
         resp = handler(event, None)
 
         assert resp["statusCode"] == 403
+
+
+# ── Tests: DELETE /channels/{id} — credential cleanup ────────────────
+
+
+class TestDeleteChannelRemovesCredential:
+    """Deleting a channel must not leave its SecureString behind."""
+
+    def test_deletes_the_ssm_parameter(self, mock_repo, mock_cred_service):
+        mock_repo.get_channel.return_value = _make_channel(
+            auth_enabled=True,
+            username="esam-ch-1",
+            ssm_path="/pois/channels/ch-1/esam-password",
+        )
+        mock_repo.delete_channel.return_value = True
+
+        event = _admin_event(method="DELETE", path="/channels/ch-1")
+        resp = handler(event, None)
+
+        assert resp["statusCode"] == 200
+        mock_cred_service.delete_password.assert_called_once_with(
+            "/pois/channels/ch-1/esam-password"
+        )
+
+    def test_no_credential_to_delete_when_auth_disabled(
+        self, mock_repo, mock_cred_service
+    ):
+        mock_repo.get_channel.return_value = _make_channel(auth_enabled=False)
+        mock_repo.delete_channel.return_value = True
+
+        event = _admin_event(method="DELETE", path="/channels/ch-1")
+        resp = handler(event, None)
+
+        assert resp["statusCode"] == 200
+        mock_cred_service.delete_password.assert_not_called()
+
+    def test_credential_is_not_touched_when_channel_is_missing(
+        self, mock_repo, mock_cred_service
+    ):
+        mock_repo.get_channel.return_value = None
+        mock_repo.delete_channel.return_value = False
+
+        event = _admin_event(method="DELETE", path="/channels/ch-1")
+        resp = handler(event, None)
+
+        assert resp["statusCode"] == 404
+        mock_cred_service.delete_password.assert_not_called()
+
+    def test_channel_deletion_survives_a_credential_failure(
+        self, mock_repo, mock_cred_service
+    ):
+        """The channel is already gone, so the request must still succeed."""
+        mock_repo.get_channel.return_value = _make_channel(
+            auth_enabled=True,
+            username="esam-ch-1",
+            ssm_path="/pois/channels/ch-1/esam-password",
+        )
+        mock_repo.delete_channel.return_value = True
+        mock_cred_service.delete_password.side_effect = RuntimeError("SSM unavailable")
+
+        event = _admin_event(method="DELETE", path="/channels/ch-1")
+        resp = handler(event, None)
+
+        assert resp["statusCode"] == 200
+        mock_cred_service.delete_password.assert_called_once()

@@ -387,7 +387,7 @@ This deletes the CloudFormation stacks and the data they own, including Lambda f
 
 Two items are not stack-managed and need a check afterwards:
 
-- **Per-channel encoder passwords.** They are created at runtime as Parameter Store SecureStrings under `/pois/channels/`. Disabling channel authentication removes the parameter, but deleting a channel or destroying the stacks can leave it behind. List and remove any that you no longer need:
+- **Per-channel encoder passwords.** They are created at runtime as Parameter Store SecureStrings under `/pois/channels/`, so they are not CloudFormation resources and `cdk destroy` cannot remove them. Disabling channel authentication and deleting a channel both remove the parameter, but destroying the stacks while channels still exist leaves it behind. Check for leftovers:
 
   ```bash
   aws ssm get-parameters-by-path --path /pois/channels --recursive --query 'Parameters[].Name'
