@@ -44,8 +44,8 @@ export const login = createAsyncThunk(
     try {
       try {
         await signOut();
-      } catch (e) {
-        // Ignore
+      } catch {
+        // No existing session to clear
       }
 
       const result = await signIn({ username: email, password });
@@ -161,7 +161,7 @@ export const checkAuth = createAsyncThunk(
         accessToken,
         idToken,
       };
-    } catch (error: any) {
+    } catch {
       return rejectWithValue('Not authenticated');
     }
   }
