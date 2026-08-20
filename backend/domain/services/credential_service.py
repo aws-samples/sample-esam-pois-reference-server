@@ -3,6 +3,7 @@
 
 """Credential service for ESAM Basic Auth password management via SSM Parameter Store."""
 
+import os
 import secrets
 import time
 from typing import Dict, Optional, Tuple
@@ -10,16 +11,31 @@ from typing import Dict, Optional, Tuple
 import boto3
 from botocore.exceptions import ClientError
 
+# Used when CREDENTIAL_PATH_PREFIX is not set, which keeps local runs and tests
+# working. Deployments set the variable to a per-environment prefix so that two
+# environments in the same account and Region never share a namespace.
+DEFAULT_PATH_PREFIX = "/pois/channels"
+
 
 class CredentialService:
     """Manages ESAM encoder passwords in AWS SSM Parameter Store with in-memory caching."""
 
     CACHE_TTL = 60  # seconds
 
-    def __init__(self, region: Optional[str] = None, ssm_client=None):
+    def __init__(
+        self,
+        region: Optional[str] = None,
+        ssm_client=None,
+        path_prefix: Optional[str] = None,
+    ):
         # In Lambda, AWS_REGION is always set; boto3 resolves it (and any other
         # configured region) automatically when region_name is None.
         self.ssm = ssm_client or boto3.client("ssm", region_name=region)
+        self.path_prefix = (
+            path_prefix
+            or os.environ.get("CREDENTIAL_PATH_PREFIX")
+            or DEFAULT_PATH_PREFIX
+        ).rstrip("/")
         self._cache: Dict[str, Tuple[str, float]] = {}
 
     def generate_password(self) -> str:
@@ -27,8 +43,13 @@ class CredentialService:
         return secrets.token_urlsafe(24)
 
     def store_password(self, channel_id: str, password: str) -> str:
-        """Store password as SSM SecureString. Returns the parameter path."""
-        path = f"/pois/channels/{channel_id}/esam-password"
+        """
+        Store password as SSM SecureString. Returns the parameter path.
+
+        Reads and deletes use the path recorded on the channel, so credentials
+        written under an earlier prefix keep working after the prefix changes.
+        """
+        path = f"{self.path_prefix}/{channel_id}/esam-password"
         self.ssm.put_parameter(
             Name=path,
             Value=password,

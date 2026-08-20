@@ -54,6 +54,7 @@ const authStack = new AuthStack(app, `${stackPrefix}-auth`, {
 const apiStack = new ApiStack(app, `${stackPrefix}-api`, {
   env: config.awsEnv,
   description: `POIS Reference Server ${envName} - API`,
+  envName,
   table: databaseStack.table,
   preferencesTable: authStack.preferencesTable,
   userPool: authStack.userPool,
