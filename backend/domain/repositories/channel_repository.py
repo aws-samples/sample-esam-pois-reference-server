@@ -8,6 +8,7 @@ from typing import List, Optional
 from datetime import datetime
 
 import boto3
+from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 from domain.models.channel import Channel
@@ -37,23 +38,22 @@ class ChannelRepository:
             List of channels
         """
         try:
-            response = self.table.scan(
-                FilterExpression="begins_with(PK, :pk) AND SK = :sk",
-                ExpressionAttributeValues={
-                    ":pk": "CHANNEL#",
-                    ":sk": "METADATA",
-                },
+            # Query GSI1 instead of scanning the table. The table is
+            # single-table design and also holds channel state and audit
+            # entries, so a Scan is billed for data this query does not need.
+            key_condition = Key("GSI1PK").eq("CHANNEL")
+
+            response = self.table.query(
+                IndexName="GSI1",
+                KeyConditionExpression=key_condition,
             )
             items = response.get("Items", [])
 
             # Handle pagination
             while "LastEvaluatedKey" in response:
-                response = self.table.scan(
-                    FilterExpression="begins_with(PK, :pk) AND SK = :sk",
-                    ExpressionAttributeValues={
-                        ":pk": "CHANNEL#",
-                        ":sk": "METADATA",
-                    },
+                response = self.table.query(
+                    IndexName="GSI1",
+                    KeyConditionExpression=key_condition,
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 items.extend(response.get("Items", []))

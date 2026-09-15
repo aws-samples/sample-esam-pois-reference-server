@@ -12,6 +12,7 @@ import time
 from typing import Dict, Any, Optional
 
 import boto3
+from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 from infrastructure.logging.structured_logger import (
@@ -92,6 +93,14 @@ credential_service = CredentialService()
 # Key: channel_id, Value: (state, timestamp)
 state_cache: Dict[str, tuple[ChannelState, float]] = {}
 CACHE_TTL_SECONDS = 5  # Cache states for 5 seconds
+
+# In-memory channel configuration cache.
+# Channel configuration changes rarely, but it is read on every ESAM request.
+# Caching it removes one DynamoDB read per signal at the cost of edits taking
+# up to CHANNEL_CACHE_TTL_SECONDS to be picked up by warm containers.
+# Key: channel_name, Value: (channel, timestamp)
+channel_cache: Dict[str, tuple[Channel, float]] = {}
+CHANNEL_CACHE_TTL_SECONDS = int(os.environ.get("CHANNEL_CACHE_TTL_SECONDS", "30"))
 
 # Configure logging
 log_level = os.environ.get("LOG_LEVEL", "INFO")
@@ -656,9 +665,51 @@ def _handle_psn(
     }
 
 
+def _get_cached_channel(channel_name: str) -> Optional[Channel]:
+    """Return a cached channel if present and not expired."""
+    if CHANNEL_CACHE_TTL_SECONDS <= 0:
+        return None
+
+    entry = channel_cache.get(channel_name)
+    if entry is None:
+        return None
+
+    channel, timestamp = entry
+    if time.time() - timestamp > CHANNEL_CACHE_TTL_SECONDS:
+        del channel_cache[channel_name]
+        return None
+
+    return channel
+
+
+def _cache_channel(channel_name: str, channel: Channel) -> None:
+    """Store a channel in the in-memory cache."""
+    if CHANNEL_CACHE_TTL_SECONDS > 0:
+        channel_cache[channel_name] = (channel, time.time())
+
+
+def _item_to_channel(item: Dict[str, Any]) -> Channel:
+    """Convert a DynamoDB item to a Channel, dropping key/index attributes."""
+    channel_data = {
+        k: v
+        for k, v in item.items()
+        if k not in ("PK", "SK", "GSI1PK", "GSI1SK", "TTL")
+    }
+    return Channel(**channel_data)
+
+
 def _get_channel_by_name(channel_name: str) -> Channel:
     """
     Get channel from DynamoDB by name.
+
+    Uses the GSI1 index for a constant-cost lookup. GSI1 is keyed as
+    GSI1PK="CHANNEL" and GSI1SK="{enabled}#{name}", so the enabled flag is part
+    of the sort key and we probe both values. Enabled channels are the common
+    case, so they resolve in a single query.
+
+    A table Scan must not be used here: it is billed for the whole table, and
+    since the response is capped at 1 MB per page, channels beyond that cap
+    become invisible and the caller silently answers "not registered".
 
     Args:
         channel_name: Channel name (acquisitionPointIdentity)
@@ -669,24 +720,25 @@ def _get_channel_by_name(channel_name: str) -> Channel:
     Raises:
         ChannelNotFoundError: If channel not found
     """
+    cached = _get_cached_channel(channel_name)
+    if cached is not None:
+        return cached
+
     try:
-        # Scan table to find channel by name
-        response = channels_table.scan(
-            FilterExpression="#name = :name",
-            ExpressionAttributeNames={"#name": "name"},
-            ExpressionAttributeValues={":name": channel_name},
-        )
+        for enabled_prefix in ("true", "false"):
+            response = channels_table.query(
+                IndexName="GSI1",
+                KeyConditionExpression=Key("GSI1PK").eq("CHANNEL")
+                & Key("GSI1SK").eq(f"{enabled_prefix}#{channel_name}"),
+                Limit=1,
+            )
+            items = response.get("Items", [])
+            if items:
+                channel = _item_to_channel(items[0])
+                _cache_channel(channel_name, channel)
+                return channel
 
-        items = response.get("Items", [])
-
-        if not items:
-            raise ChannelNotFoundError(f"Channel not found: {channel_name}")
-
-        # Return first match
-        item = items[0]
-        channel = Channel(**item)
-
-        return channel
+        raise ChannelNotFoundError(f"Channel not found: {channel_name}")
 
     except ClientError as e:
         raise Exception(f"DynamoDB error: {e}")
