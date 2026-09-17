@@ -34,6 +34,10 @@ export interface ApiStackProps extends cdk.StackProps {
    * response payloads (including ESAM XML) to CloudWatch. Useful while
    * developing, but it increases log volume and cost. Defaults to true so the
    * sample stays easy to debug; the `prod` environment profile disables it.
+   *
+   * Note that payload logging is indiscriminate: request bodies for the auth
+   * and user management endpoints contain passwords, so these logs must be
+   * treated as sensitive. Keep this off outside development.
    */
   enableDetailedLogging?: boolean;
   /** Enables AWS X-Ray tracing on the API stage and Lambda functions. */
@@ -329,6 +333,13 @@ export class ApiStack extends cdk.Stack {
       description: 'CloudWatch logs query service',
       tracing: lambdaTracing,
       logRetention: logRetention,
+      // The monitoring UI polls this handler every few seconds per open tab,
+      // and each CloudWatch Insights query can hold an invocation for the full
+      // 30s timeout. Left uncapped it shares the account concurrency pool with
+      // the signal processor, so enough open dashboards could throttle live
+      // ESAM traffic. Capping it keeps the browser-driven path bounded; the
+      // signal processor stays uncapped and can use the rest of the pool.
+      reservedConcurrentExecutions: 10,
     });
 
     logsQuery.addToRolePolicy(
