@@ -217,6 +217,11 @@ export class ApiStack extends cdk.Stack {
       environment: {
         CHANNELS_TABLE_NAME: props.table.tableName,
         CREDENTIAL_PATH_PREFIX: credentialPrefix,
+        // Channel configuration is read on every signal but changes rarely, so
+        // it is cached in the execution environment. The tradeoff is that a
+        // channel edit takes up to this many seconds to reach warm containers.
+        // Set to 0 to read from DynamoDB on every request.
+        CHANNEL_CACHE_TTL_SECONDS: '30',
         LOG_LEVEL: 'INFO',
       },
       timeout: cdk.Duration.seconds(30),
