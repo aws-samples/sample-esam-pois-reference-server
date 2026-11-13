@@ -3,15 +3,37 @@
 
 import { configureStore } from '@reduxjs/toolkit';
 import { setupListeners } from '@reduxjs/toolkit/query';
-import { persistStore, persistReducer, FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER } from 'redux-persist';
-import storage from 'redux-persist/lib/storage';
+import {
+  persistStore,
+  persistReducer,
+  FLUSH,
+  REHYDRATE,
+  PAUSE,
+  PERSIST,
+  PURGE,
+  REGISTER,
+  type Storage,
+} from 'redux-persist';
 import authReducer from './slices/authSlice';
 import { apiSlice } from './api/apiSlice';
+
+// Keep the browser adapter in application code instead of importing the
+// CommonJS redux-persist storage module. Vite 8 can expose that deep import as
+// a module namespace object, which has no getItem/setItem methods at runtime.
+const browserStorage: Storage = {
+  getItem: async (key: string) => window.localStorage.getItem(key),
+  setItem: async (key: string, value: string) => {
+    window.localStorage.setItem(key, value);
+  },
+  removeItem: async (key: string) => {
+    window.localStorage.removeItem(key);
+  },
+};
 
 // Persist config for auth slice
 const authPersistConfig = {
   key: 'pois-auth',
-  storage,
+  storage: browserStorage,
   whitelist: ['user', 'idToken', 'accessToken', 'isAuthenticated'],
 };
 

@@ -64,6 +64,8 @@ Thumbs.db
 coverage/
 .nyc_output/
 htmlcov/
+playwright-report/
+test-results/
 *.lcov
 .coverage
 .coverage.*
