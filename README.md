@@ -35,27 +35,26 @@ user administration, monitoring, and documentation.
 
 ## How it works
 
-```text
-ESAM-capable encoder
-        |
-        | SignalProcessingEvent + SCTE-35
-        v
-Amazon API Gateway
-        |
-        v
-AWS Lambda ──> channel lookup ──> rule evaluation ──> signal conditioning
-        |                                      |
-        |                                      └──> optional external actions
-        v
-SignalProcessingNotification
-        |
-        v
-Encoder emits, replaces, or suppresses the signal
+```mermaid
+sequenceDiagram
+    participant Encoder as ESAM-capable encoder
+    participant POIS as POIS Reference Server
+    participant Rules as Rule engine
+    participant Actions as External actions
+
+    Encoder->>POIS: SignalProcessingEvent with SCTE-35
+    POIS->>Rules: Load channel and evaluate rules
+    Rules-->>POIS: noop, delete, or replace
+    opt Configured action
+        POIS->>Actions: Invoke webhook or MediaLive action
+        Actions-->>POIS: Execution result
+    end
+    POIS-->>Encoder: SignalProcessingNotification
 ```
 
-For example, a rule can match a Provider Placement Opportunity Start
-(`segmentation_type_id` `0x34`, or `52`) longer than 30 seconds and return a
-replacement signal with its segmentation duration capped at 30 seconds.
+Rules can pass a signal through, suppress it, or return a modified signal. They
+can also trigger optional integrations such as webhooks and AWS Elemental
+MediaLive schedule actions.
 
 ## Capabilities
 
