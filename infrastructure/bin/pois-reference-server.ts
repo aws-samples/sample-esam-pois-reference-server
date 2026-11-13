@@ -80,7 +80,6 @@ new FrontendStack(app, `${stackPrefix}-frontend`, {
   description: `POIS Reference Server ${envName} - Frontend`,
   apiUrl: apiStack.apiUrl,
   userPool: authStack.userPool,
-  frontendUrlParamName: authStack.frontendUrlParamName,
   tags: {
     Environment: envName,
     Project: 'POIS-Reference-Server',

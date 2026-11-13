@@ -64,6 +64,8 @@ Thumbs.db
 coverage/
 .nyc_output/
 htmlcov/
+playwright-report/
+test-results/
 *.lcov
 .coverage
 .coverage.*
@@ -81,6 +83,7 @@ backend/dist/
 # ----------------------------------------------------------------------------
 *.log
 deploy.log
+.playwright-cli/
 
 # ----------------------------------------------------------------------------
 # Misc

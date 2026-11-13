@@ -6,7 +6,6 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import { Construct } from 'constructs';
 import * as path from 'path';
@@ -15,8 +14,6 @@ import { execSync } from 'child_process';
 export interface FrontendStackProps extends cdk.StackProps {
   apiUrl: string;
   userPool?: cognito.IUserPool;
-  /** SSM parameter name where this stack publishes the dashboard URL. */
-  frontendUrlParamName?: string;
 }
 
 export class FrontendStack extends cdk.Stack {
@@ -148,29 +145,15 @@ function handler(event) {
       distributionPaths: ['/*'],
     });
 
-    // Publish the dashboard URL where the user pool's CustomMessage trigger
-    // reads it at send time, so invitation emails carry a working link.
-    let frontendUrlParam: ssm.StringParameter | undefined;
-    if (props.frontendUrlParamName) {
-      frontendUrlParam = new ssm.StringParameter(this, 'FrontendUrlParam', {
-        parameterName: props.frontendUrlParamName,
-        stringValue: `https://${this.distribution.distributionDomainName}`,
-        description: 'POIS dashboard URL, embedded in Cognito invitation emails',
-      });
-    }
-
     // =========================================================================
     // Initial Admin User
     //
     // Self sign-up is disabled, so the first user is provisioned at deploy
     // time: npx cdk deploy --all -c adminEmail=you@example.com
     //
-    // The user is created HERE (not in the auth stack) so the CloudFront URL
-    // already exists in SSM when Cognito's CustomMessage trigger renders the
-    // invitation - the email then carries an "Open the dashboard" button.
-    // Cognito emails a temporary password; the login page handles the
-    // required password change. No password is generated, stored, or logged
-    // by the stacks.
+    // Cognito uses its built-in invitation email, which requires no SES setup.
+    // The login page handles the required password change. No password is
+    // generated, stored, or logged by the stacks.
     // =========================================================================
     const adminEmail: string | undefined = this.node.tryGetContext('adminEmail');
     if (adminEmail && props.userPool) {
@@ -184,12 +167,6 @@ function handler(event) {
           { name: 'name', value: 'Administrator' },
         ],
       });
-      adminUser.node.addDependency(this.distribution);
-      if (frontendUrlParam) {
-        // The URL must be in SSM before Cognito sends the invitation
-        adminUser.node.addDependency(frontendUrlParam);
-      }
-
       const adminMembership = new cognito.CfnUserPoolUserToGroupAttachment(
         this,
         'AdminUserGroupMembership',

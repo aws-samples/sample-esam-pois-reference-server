@@ -162,10 +162,11 @@ export class ApiStack extends cdk.Stack {
     // =========================================================================
     // Lambda Layers
     //
-    // Layers are built reproducibly inside the official AWS SAM Python build
-    // image (Linux x86_64) via CDK Docker bundling, so contributors get the
-    // correct native binaries regardless of their host OS/arch. The only
-    // requirement is a running Docker daemon during `cdk deploy`.
+    // CDK first bundles layers with the host's python3/pip. Native dependencies
+    // are resolved as manylinux x86_64 wheels so the result matches Lambda even
+    // when deployment runs from macOS or ARM. The official AWS SAM build image
+    // remains an automatic fallback, so Docker is optional rather than a
+    // deployment prerequisite.
     //
     // Each layer's pip dependencies live in `backend/layers/<name>/requirements.txt`.
     // =========================================================================
