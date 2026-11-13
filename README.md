@@ -101,10 +101,15 @@ The deployed solution uses:
 - AWS CDK CLI v2
 - Python 3.12 or later
 - Node.js 20 or later and npm 10 or later
+- Internet access to AWS, npm, and PyPI
 
 Before continuing, confirm that `python3 --version` resolves to Python 3.12 or
 later. The project `Makefile` uses the `python3` executable when creating its
 virtual environment.
+
+Docker is optional. The CDK packages Lambda dependencies with the local
+`python3` and `pip`, including Linux x86_64 wheels for native dependencies.
+Docker is used only as a fallback if local packaging cannot complete.
 
 ### 1. Clone and install
 
@@ -117,23 +122,53 @@ make install
 The `make install` command creates `backend/.venv` and installs the backend,
 frontend, and infrastructure dependencies.
 
-### 2. Bootstrap the AWS environment
+### 2. Select and verify the AWS environment
+
+Set the AWS CLI profile and Region that will own the deployment:
+
+```bash
+export AWS_PROFILE=dev
+export AWS_REGION=sa-east-1
+export AWS_DEFAULT_REGION="$AWS_REGION"
+
+aws sts get-caller-identity
+```
+
+Review the returned account before continuing. Stack names default to the
+`dev` environment, but the AWS CLI profile can have any name.
+
+### 3. Bootstrap the AWS environment
 
 Run this once for each AWS account and Region:
 
 ```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 cd infrastructure
-npx cdk bootstrap aws://<ACCOUNT_ID>/<REGION>
+npx cdk bootstrap "aws://${ACCOUNT_ID}/${AWS_REGION}"
 ```
 
-### 3. Deploy
+Running the command again is safe; an up-to-date bootstrap stack reports no
+changes.
+
+### 4. Review and deploy
 
 ```bash
+npx cdk diff -c adminEmail=you@example.com
 npx cdk deploy --all -c adminEmail=you@example.com
 ```
 
 The `adminEmail` context value creates the initial administrator. Amazon
-Cognito sends that address an invitation with a temporary password.
+Cognito sends that address an invitation with a temporary password. The CDK
+may ask you to approve IAM changes during deployment; review the displayed
+changes before confirming.
+
+For an infrastructure-only deployment, you can omit `adminEmail`. All stacks
+will deploy, but no dashboard user will exist and self sign-up remains
+disabled. Create a user and add it to the `admin` group before attempting to
+sign in.
+
+For non-interactive automation, only after reviewing `cdk diff`, add
+`--require-approval never` to the deploy command.
 
 After deployment, the CDK outputs include:
 
@@ -141,6 +176,10 @@ After deployment, the CDK outputs include:
 - `ApiUrl` — management API base URL
 - `EsamEndpoint` — endpoint configured on the encoder
 - `UserPoolId` — Cognito user pool identifier
+
+Open `FrontendUrl` and sign in with the temporary password from the Cognito
+invitation. As a basic smoke test, `GET /auth/config` against `ApiUrl` should
+return `200`, while an anonymous `GET /channels` should return `401`.
 
 ### Deployment options
 
