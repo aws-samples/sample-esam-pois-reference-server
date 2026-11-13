@@ -152,6 +152,11 @@ changes.
 
 ### 4. Review and deploy
 
+> [!WARNING]
+> Do not omit `adminEmail` for a normal deployment. The infrastructure will
+> deploy successfully without it, but the dashboard will have no user and
+> Cognito self sign-up is disabled.
+
 ```bash
 npx cdk diff -c adminEmail=you@example.com
 npx cdk deploy --all -c adminEmail=you@example.com
@@ -159,13 +164,53 @@ npx cdk deploy --all -c adminEmail=you@example.com
 
 The `adminEmail` context value creates the initial administrator. Amazon
 Cognito sends that address an invitation with a temporary password. The CDK
-may ask you to approve IAM changes during deployment; review the displayed
-changes before confirming.
+uses Cognito's built-in email delivery, so this flow does not require Docker,
+an Amazon SES identity, or additional email configuration. The CDK may ask you
+to approve IAM changes during deployment; review the displayed changes before
+confirming.
 
 For an infrastructure-only deployment, you can omit `adminEmail`. All stacks
 will deploy, but no dashboard user will exist and self sign-up remains
 disabled. Create a user and add it to the `admin` group before attempting to
 sign in.
+
+If you already deployed without `adminEmail`, copy `UserPoolId` from the CDK
+outputs and provision the administrator without redeploying:
+
+```bash
+export USER_POOL_ID=<USER_POOL_ID>
+export ADMIN_EMAIL=you@example.com
+
+aws cognito-idp admin-create-user \
+  --user-pool-id "$USER_POOL_ID" \
+  --username "$ADMIN_EMAIL" \
+  --user-attributes \
+    Name=email,Value="$ADMIN_EMAIL" \
+    Name=email_verified,Value=true \
+    Name=name,Value=Administrator \
+  --desired-delivery-mediums EMAIL
+
+aws cognito-idp admin-add-user-to-group \
+  --user-pool-id "$USER_POOL_ID" \
+  --username "$ADMIN_EMAIL" \
+  --group-name admin
+```
+
+Cognito sends a new temporary password to `ADMIN_EMAIL`. The first sign-in
+requires replacing it with a permanent password.
+
+If the invitation does not arrive, check spam and corporate quarantine, then
+generate a new temporary password and resend the message:
+
+```bash
+aws cognito-idp admin-create-user \
+  --user-pool-id <USER_POOL_ID> \
+  --username you@example.com \
+  --message-action RESEND \
+  --desired-delivery-mediums EMAIL
+```
+
+The resend invalidates the previous temporary password.
 
 For non-interactive automation, only after reviewing `cdk diff`, add
 `--require-approval never` to the deploy command.
